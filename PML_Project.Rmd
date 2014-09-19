@@ -1,0 +1,97 @@
+---
+title: "PML Project"
+date: "Friday, September 19, 2014"
+output: html_document
+---
+
+### Introduction
+
+Scope of the project is building a model capable of predicting the execution quality of a barbell lift exercise, given a set of measurements from sensors worn by a group of volunteers.
+
+```{r}
+library(caret);library(kernlab);library(ggplot2)
+set.seed(1978)
+```
+
+The project is carried out mainly using the caret package.
+
+
+### The Data
+
+The data set "pml-training" is provided to build this model. It contains 19622 observations, 160 variables.
+
+
+#### The quality of the data, clean-up
+
+By analyzing the provided data set, it emerges that it needs to be cleaned up to be used.
+
+1. The first step was removing the columns containing mainly NotAvailable's (NA), no values at all or not processable data (like div by 0). Scanning the data set, it turns out that the offenders are all the variables whose names begin with: avg_, kurtosis_, stddev_, var_, skewness_, min_, max_, amplitude_. 
+
+2. Additionally, the first 7 columns contain apparently non relevant data for our scopes (observation n.,name of the volunteer, time infos, time window n.). Because of that, they are also removed from the data set.
+
+```{r}
+data <- read.csv("pml-training.csv")
+
+dataRed<-data[,which(!grepl('avg',colnames(data)))]
+dataRed<-dataRed[,which(!grepl('kurtosis',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('stddev',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('var',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('skewness',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('min',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('max',colnames(dataRed)))]
+dataRed<-dataRed[,which(!grepl('amplitude',colnames(dataRed)))]
+dataRed<-dataRed[,-c(1:7)]
+
+```
+
+This reduces the number of actual variables to 53 (52 predictors + 1 "classe" variable).
+
+
+### The cross validation
+
+The dataRed data set has been subsequently sliced into a training set and a test set.
+Following the general guidelines, 60% of the observations are (randomly) assigned to the first, 40% to the second, ensuring that both have a coherent distribution of the 5 classes of the variable "classe".
+
+```{r}
+inTrain <- createDataPartition(y=dataRed$classe,p=0.60,list=FALSE)
+training <- dataRed[inTrain,]
+testing<-dataRed[-inTrain,]
+```
+
+The training set will be used to train the model and to obtain the first relevant matrics about its performance (like the error and the accuracy).
+
+The test set will be used to test the model, obtaining a more realistic indication of its performance, as it will be estimated using "unknown" data (i.e. not used, implicitely or explicitely to build the model).
+
+
+### The model
+
+The available predictors are all continuous variables, while the outcome is a categorical one.
+This leads to use classification algorithms; among them, I chose the the random forest, mainly because of its high level of accuracy.
+
+Concerning the **pre processing**, although some variables are characterized by significantly skewed distributions, some tests I carried out did not show any increase of accuracy by adopting, for example, a centering and scaling approach. 
+
+
+```{r}
+modFit=train(classe ~ .,method = "rf",data=training)
+plot(modFit$finalModel)
+```
+
+Interestingly, the error of the model decreases until circa 300 trees: increasing the size of the forest beyond that doesn't bring any further benefit in that respect.
+
+```{r}
+modFit
+```
+
+Concerning the performance in the training set, accuracy, sensitivity and specificity are satisfactory; however, in testing data set it is expected to obtain lower values, as the model will be working on "unknown" data.
+
+Applying the model to the testing data set and comparing its predictions to the actual values, we obtain:
+
+
+```{r}
+OS_prediction <- predict(modFit,testing)
+C_matrix <- confusionMatrix(OS_prediction,testing$classe)
+C_matrix
+```
+
+As expected, accuracy, sensitivity and specificity in the Out of Sample are lower than in the In Sample, although they remain high enough to use this model confidently and to move to the next stage, using it to predict the 20 cases in the "pml-testing.csv" data set.
+
